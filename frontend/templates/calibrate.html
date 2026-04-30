@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <title>PanoSync — Kalibrierung</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #0d1117; color: #c0d0d8; font-family: 'Segoe UI', sans-serif; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+    /* ── Top bar ──────────────────────────────────────── */
+    #topbar { background: #0d1117; padding: 0.4rem 1rem; display: flex; align-items: center; gap: 0.7rem; border-bottom: 1px solid #1e2a38; flex-shrink: 0; flex-wrap: wrap; }
+    #topbar h1 { font-size: 1.05rem; color: #fff; font-weight: 700; margin-right: 0.1rem; }
+    #topbar h1 span { color: #009cab; }
+    .tag { background: #131c26; border: 1px solid #253040; border-radius: 4px; padding: 0.15rem 0.5rem; font-size: 0.78rem; color: #6a8090; }
+    .tag.active { border-color: #009cab; color: #009cab; }
+    .spacer { flex: 1; }
+    .topbtn { border: 1px solid transparent; border-radius: 5px; padding: 0.3rem 0.8rem; font-weight: 700; cursor: pointer; font-size: 0.82rem; }
+    #mode-toggle   { background: #1a2030; border-color: #c6611720; color: #c66117; }
+    #mode-toggle.sync-mode { background: #0a2028; border-color: #009cab; color: #009cab; }
+    #zoom-sync-btn { background: #131c26; border-color: #253040; color: #5a8070; }
+    #zoom-sync-btn.active { background: #0a2028; border-color: #009cab; color: #009cab; }
+    #recalc-btn    { background: #131c26; border-color: #253040; color: #6a9ab0; }
+    #recalc-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+    #save-btn      { background: #009cab; border-color: #009cab; color: #fff; }
+    #save-btn:hover { background: #00b3c4; }
+    #rmse-display  { font-size: 0.78rem; color: #5a7080; white-space: nowrap; }
+    #instr         { font-size: 0.78rem; color: #c66117; max-width: 340px; }
+
+    /* ── Viewer panels ────────────────────────────────── */
+    .viewer-wrap { flex: 1; display: grid; grid-template-rows: 1fr 1fr; min-height: 0; }
+    .panel { display: flex; flex-direction: column; border-bottom: 1px solid #1e2a38; min-height: 0; }
+    .panel:last-child { border-bottom: none; }
+
+    .toolbar { background: #0d1117; padding: 0.25rem 0.6rem; display: flex; align-items: center; gap: 0.4rem; flex-shrink: 0; border-bottom: 1px solid #1e2a38; font-size: 0.8rem; }
+    .toolbar .lbl { color: #009cab; font-weight: 700; width: 14px; text-align: center; flex-shrink: 0; }
+    .toolbar .pano-name { color: #8a9aaa; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .zoom-btn { background: #131c26; border: 1px solid #253040; color: #8a9aaa; width: 22px; height: 22px; border-radius: 3px; cursor: pointer; font-size: 0.9rem; line-height: 1; flex-shrink: 0; }
+    .zoom-btn:hover { background: #1e2a38; }
+    /* editable zoom input */
+    .zoom-input { width: 56px; text-align: center; font-size: 0.78rem; background: #0d1117; border: 1px solid #253040; border-radius: 3px; color: #8a9aaa; padding: 1px 3px; cursor: text; }
+    .zoom-input:focus { outline: 1px solid #009cab; border-color: #009cab; }
+    .reset-btn { background: #131c26; border: 1px solid #253040; color: #6a8090; padding: 0.1rem 0.5rem; border-radius: 3px; cursor: pointer; font-size: 0.75rem; flex-shrink: 0; }
+    .reset-btn:hover { background: #1e2a38; }
+
+    .viewer { flex: 1; position: relative; min-height: 0; overflow: hidden; background: #0a0a0a; }
+    .viewer > div { width: 100%; height: 100%; }
+
+    /* ── Bottom panel ─────────────────────────────────── */
+    #bottom { background: #0d1117; border-top: 1px solid #1e2a38; padding: 0.35rem 0.8rem; flex-shrink: 0; display: flex; align-items: center; gap: 1rem; min-height: 36px; }
+    #pairs-list { flex: 1; display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; }
+    .pair-chip { display: flex; align-items: center; gap: 0.25rem; background: #131c26; border: 1px solid #253040; border-radius: 20px; padding: 0.15rem 0.55rem 0.15rem 0.45rem; font-size: 0.75rem; cursor: pointer; user-select: none; }
+    .pair-chip:hover { border-color: #009cab; }
+    .pair-chip .dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+    .pair-chip .del { color: #3a5060; margin-left: 0.2rem; font-size: 0.7rem; cursor: pointer; }
+    .pair-chip .del:hover { color: #c61617; }
+    .pair-chip .resid { font-size: 0.68rem; margin-left: 0.1rem; opacity: 0.9; }
+    #pairs-count { font-size: 0.78rem; color: #3a5060; white-space: nowrap; flex-shrink: 0; }
+    #clear-all-btn { background: none; border: 1px solid #2a1820; color: #7a3535; border-radius: 4px; padding: 0.1rem 0.5rem; font-size: 0.75rem; cursor: pointer; flex-shrink: 0; }
+    #clear-all-btn:hover { background: #1a1015; color: #c61617; }
+
+    /* ── Toast notification ───────────────────────────── */
+    #toast { position: fixed; bottom: 2.5rem; left: 50%; transform: translateX(-50%); background: #0a1e20; border: 1px solid #009cab; color: #009cab; padding: 0.4rem 1.2rem; border-radius: 6px; font-size: 0.85rem; pointer-events: none; opacity: 0; transition: opacity 0.3s; z-index: 999; }
+    #toast.show { opacity: 1; }
+    #toast.error { background: #1a0a0a; border-color: #c61617; color: #c61617; }
+
+    /* ── RMSE badge ───────────────────────────────────── */
+    #rmse-display { font-size: 0.78rem; white-space: nowrap; padding: 0.15rem 0.5rem; border-radius: 4px; background: #131c26; border: 1px solid #253040; }
+    #rmse-display.good { border-color: #009cab; color: #009cab; }
+    #rmse-display.bad  { border-color: #c66117; color: #c66117; }
+
+    /* ── SVG overlays ─────────────────────────────────── */
+    .overlay-svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+
+    /* ── Context menu ─────────────────────────────────── */
+    #ctx-menu {
+      position: fixed;
+      z-index: 500;
+      background: #0f1820;
+      border: 1px solid #253040;
+      border-radius: 7px;
+      padding: 0.3rem 0;
+      min-width: 170px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+      display: none;
+    }
+    #ctx-menu.visible { display: block; }
+    .ctx-item {
+      padding: 0.45rem 1rem;
+      font-size: 0.83rem;
+      color: #8a9aaa;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .ctx-item:hover { background: #1a2535; color: #fff; }
+    .ctx-item.danger:hover { background: #1a0a0a; color: #c61617; }
+    .ctx-sep { border-top: 1px solid #1e2a38; margin: 0.2rem 0; }
+  </style>
+</head>
+<body>
+
+<div id="topbar">
+  <!-- Brand mark -->
+  <div style="display:flex;align-items:center;gap:0.7rem;margin-right:0.4rem;flex-shrink:0;">
+    <img src="/static/onsite-logo.jpg" alt="OnsiteAI" style="height:24px;width:auto;display:block;opacity:0.9;">
+    <span style="color:#1e2a38;font-size:0.8rem;">|</span>
+    <h1>Onsite<span>AI</span> <span style="color:#3a5060;font-weight:400;font-size:0.85rem;">/ PanoSync</span></h1>
+  </div>
+  <span class="tag active" id="mode-label">Kalibrierung</span>
+  <span id="instr">Punkt in Pano A klicken, dann denselben Punkt in Pano B</span>
+  <span class="spacer"></span>
+  <span id="rmse-display" title="Affine RMSE — mittlerer Restfehler. TPS korrigiert lokal.">—</span>
+  <button class="topbtn" id="recalc-btn" onclick="recalculate()" disabled
+    title="Transformation neu berechnen">Neu berechnen</button>
+  <button class="topbtn" id="zoom-sync-btn" onclick="toggleZoomSync()"
+    title="Zoomstärke beider Viewer synchronisieren">Zoom-Sync: AUS</button>
+  <button class="topbtn" id="mode-toggle" onclick="toggleMode()">Sync-Modus</button>
+  <button class="topbtn" id="save-btn" onclick="saveSession()"
+    title="Kalibrierung speichern — wird beim nächsten Upload wiederhergestellt">Speichern</button>
+  <a href="/hilfe" target="_blank" class="topbtn" style="text-decoration:none;background:#0a2028;border-color:#009cab;color:#009cab;font-weight:700;" title="Hilfe & Anleitung öffnen">? Hilfe</a>
+  <a href="/" style="color:#3a5060;font-size:0.8rem;text-decoration:none;flex-shrink:0;">← Upload</a>
+</div>
+
+<div class="viewer-wrap">
+  <!-- Panorama A -->
+  <div class="panel">
+    <div class="toolbar">
+      <span class="lbl">A</span>
+      <span class="pano-name">Panorama A — Original</span>
+      <button class="zoom-btn" onclick="zoomViewer('a',-1)">−</button>
+      <input class="zoom-input" id="zoom-a" type="text" value="—" title="Zoom eingeben (z.B. 200%) und Enter drücken">
+      <button class="zoom-btn" onclick="zoomViewer('a',+1)">+</button>
+      <button class="reset-btn" onclick="resetViewer('a')">Reset</button>
+    </div>
+    <div class="viewer">
+      <div id="viewer-a"></div>
+      <svg class="overlay-svg" id="overlay-a"></svg>
+    </div>
+  </div>
+
+  <!-- Panorama B -->
+  <div class="panel">
+    <div class="toolbar">
+      <span class="lbl">B</span>
+      <span class="pano-name">Panorama B — BWB-Kontrast</span>
+      <button class="zoom-btn" onclick="zoomViewer('b',-1)">−</button>
+      <input class="zoom-input" id="zoom-b" type="text" value="—" title="Zoom eingeben (z.B. 200%) und Enter drücken">
+      <button class="zoom-btn" onclick="zoomViewer('b',+1)">+</button>
+      <button class="reset-btn" onclick="resetViewer('b')">Reset</button>
+    </div>
+    <div class="viewer">
+      <div id="viewer-b"></div>
+      <svg class="overlay-svg" id="overlay-b"></svg>
+    </div>
+  </div>
+</div>
+
+<div id="bottom">
+  <div id="pairs-count">Paare: 0</div>
+  <div id="pairs-list"></div>
+  <button id="clear-all-btn" onclick="clearAllPairs()" title="Alle Punktpaare löschen" style="display:none">✕ Alle löschen</button>
+  <div style="font-size:0.72rem;color:#444;white-space:nowrap;flex-shrink:0;">Klick auf Chip → Viewer springt hin &nbsp;|&nbsp; ✕ löscht das Paar &nbsp;|&nbsp; Escape bricht ab</div>
+</div>
+
+<div id="toast"></div>
+<div id="ctx-menu"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/openseadragon@4.1.1/build/openseadragon/openseadragon.min.js"></script>
+<script>
+// ═══════════════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════════════
+const SESSION_ID = "{{ session_id }}";
+// Full affine: x_B = a*x_A + b*y_A + tx
+//              y_B = c*x_A + d*y_A + ty
+// b,c capture rotation; inv_* is the reverse (B→A)
+let T = { a:1, b:0, tx:0, c:0, d:1, ty:0,
+          inv_a:1, inv_b:0, inv_tx:0, inv_c:0, inv_d:1, inv_ty:0 };
+let pairs = [];
+let nextId = 1;
+
+// Mode: "calib" | "sync"
+let mode = "calib";
+let pendingA = null;          // image coords {x,y} of A-click waiting for B
+
+// Sync marker coords in image space (persist across pan/zoom)
+let syncMarker = { a: null, b: null };  // each: {x, y} or null
+// Temp marker (pending A click) in image space
+let tempMarkerCoord = null;  // {x, y} in A image coords
+
+// TPS weights (null = not yet computed, use affine fallback)
+let TPS = null;
+
+let zoomSyncEnabled = false;
+// Directional locks prevent feedback loops in pan sync.
+// lockAtoB: A triggered a pan on B → suppress B→A back-sync
+// lockBtoA: B triggered a pan on A → suppress A→B back-sync
+let lockAtoB = false;
+let lockBtoA = false;
+let syncLock = false; // kept for zoom sync only
+
+let viewerA = null, viewerB = null;
+
+const COLORS = ['#ff6b6b','#ffd93d','#6bcb77','#4d96ff','#c77dff','#ff9f1c','#00c9a7','#f72585'];
+
+// ═══════════════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════════════
+async function init() {
+  const r = await fetch(`/api/session/${SESSION_ID}`);
+  const sessionData = await r.json();
+  T = sessionData.transform || T;
+  TPS = (sessionData.transform && sessionData.transform.tps) || null;
+
+  if (sessionData.pairs && sessionData.pairs.length > 0) {
+    for (const p of sessionData.pairs) pairs.push({ id: nextId++, ...p });
+    updateUI();
+    if (sessionData.calibration_restored) {
+      showToast(`Kalibrierung wiederhergestellt — ${pairs.length} Referenzpaare geladen`);
+    }
+  }
+
+  const tileBase = `/tiles/${SESSION_ID}`;
+  const osdCommon = {
+    prefixUrl: "https://cdn.jsdelivr.net/npm/openseadragon@4.1.1/build/openseadragon/images/",
+    showNavigationControl: false,
+    animationTime: 0.2,
+    minZoomImageRatio: 0.3,
+    maxZoomPixelRatio: 16,
+    // ── FIX: disable click-to-zoom completely ──────────────
+    gestureSettingsMouse:  { scrollToZoom: true,  clickToZoom: false, dblClickToZoom: false },
+    gestureSettingsPen:    { scrollToZoom: false, clickToZoom: false, dblClickToZoom: false },
+    gestureSettingsTouch:  { scrollToZoom: false, clickToZoom: false, dblClickToZoom: false, pinchToZoom: true },
+  };
+
+  viewerA = OpenSeadragon({ id: "viewer-a", tileSources: `${tileBase}/panoA.dzi`, ...osdCommon });
+  viewerB = OpenSeadragon({ id: "viewer-b", tileSources: `${tileBase}/panoB.dzi`, ...osdCommon });
+
+  // Zoom display + overlay refresh on every viewport change
+  viewerA.addHandler('open',      () => { updateZoomDisplay('a'); });
+  viewerA.addHandler('animation', () => { updateZoomDisplay('a'); redrawAll(); });
+  viewerA.addHandler('zoom',      () => { updateZoomDisplay('a'); if (zoomSyncEnabled) syncZoomAtoB(); });
+
+  viewerB.addHandler('open',      () => { updateZoomDisplay('b'); });
+  viewerB.addHandler('animation', () => { updateZoomDisplay('b'); redrawAll(); });
+  viewerB.addHandler('zoom',      () => { updateZoomDisplay('b'); if (zoomSyncEnabled) syncZoomBtoA(); });
+
+  // Pan sync (sync mode only) — directional locks prevent feedback loops
+  viewerA.addHandler('pan', () => {
+    redrawAll();
+    if (mode !== 'sync' || lockBtoA) return;
+    lockAtoB = true;
+    syncPanAtoB();
+    setTimeout(() => { lockAtoB = false; }, 100);
+  });
+  viewerB.addHandler('pan', () => {
+    redrawAll();
+    if (mode !== 'sync' || lockAtoB) return;
+    lockBtoA = true;
+    syncPanBtoA();
+    setTimeout(() => { lockBtoA = false; }, 100);
+  });
+
+  // Click handlers
+  viewerA.addHandler('canvas-click', (e) => {
+    if (!e.quick) return;
+    // Convert screen coords → image coords (correct OSD method, no zoom interference)
+    const img = viewerA.viewport.viewerElementToImageCoordinates(e.position);
+    handleClickA(img.x, img.y);
+  });
+  viewerB.addHandler('canvas-click', (e) => {
+    if (!e.quick) return;
+    const img = viewerB.viewport.viewerElementToImageCoordinates(e.position);
+    handleClickB(img.x, img.y);
+  });
+
+  // Editable zoom inputs
+  setupZoomInput('a');
+  setupZoomInput('b');
+
+  // Right-click context menu on pair markers
+  addContextMenuHandlers();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// KEYBOARD
+// ═══════════════════════════════════════════════════════════════
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') cancelPendingA();
+});
+
+function cancelPendingA() {
+  if (!pendingA) return;
+  pendingA = null;
+  tempMarkerCoord = null;
+  redrawAll();
+  setInstruction('Abgebrochen — Punkt in Pano A wählen.');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TRANSFORM HELPERS — affine fallback or TPS when available
+// ═══════════════════════════════════════════════════════════════
+
+function _tpsApply(tps, prefix, x, y) {
+  const cx = tps[prefix + '_cx'], cy = tps[prefix + '_cy'];
+  const wx = tps[prefix + '_wx'], ax = tps[prefix + '_ax'];
+  const wy = tps[prefix + '_wy'], ay = tps[prefix + '_ay'];
+  let rx = ax[0] + ax[1]*x + ax[2]*y;
+  let ry = ay[0] + ay[1]*x + ay[2]*y;
+  for (let i = 0; i < cx.length; i++) {
+    const ddx = x - cx[i], ddy = y - cy[i];
+    const r2 = ddx*ddx + ddy*ddy;
+    const u = r2 < 1e-10 ? 0.0 : r2 * Math.log(r2);
+    rx += wx[i] * u;
+    ry += wy[i] * u;
+  }
+  return { x: rx, y: ry };
+}
+
+function applyFwd(ix, iy) {
+  if (TPS) return _tpsApply(TPS, 'fwd', ix, iy);
+  return { x: T.a*ix + T.b*iy + T.tx, y: T.c*ix + T.d*iy + T.ty };
+}
+
+function applyInv(ix, iy) {
+  if (TPS) return _tpsApply(TPS, 'inv', ix, iy);
+  return { x: T.inv_a*ix + T.inv_b*iy + T.inv_tx, y: T.inv_c*ix + T.inv_d*iy + T.inv_ty };
+}
+
+// ═══════════════════════════════════════════════════════════════
+// CLICK HANDLERS
+// ═══════════════════════════════════════════════════════════════
+function handleClickA(ix, iy) {
+  if (mode === 'calib') {
+    pendingA = { x: ix, y: iy };
+    tempMarkerCoord = { x: ix, y: iy };
+    setInstruction('Jetzt denselben Punkt in Pano B klicken... (Escape = abbrechen)');
+    redrawAll();
+  } else {
+    // Sync: A → B — lock B→A to prevent back-sync drift
+    const b = applyFwd(ix, iy);
+    syncMarker.a = { x: ix, y: iy };
+    syncMarker.b = b;
+    redrawAll();
+    lockAtoB = true;
+    panToImage(viewerB, b.x, b.y);
+    setTimeout(() => { lockAtoB = false; }, 200);
+  }
+}
+
+function handleClickB(ix, iy) {
+  if (mode === 'calib') {
+    if (!pendingA) {
+      setInstruction('Zuerst einen Punkt in Pano A wählen!');
+      return;
+    }
+    pairs.push({ id: nextId++, ax: pendingA.x, ay: pendingA.y, bx: ix, by: iy });
+    pendingA = null;
+    tempMarkerCoord = null;
+    setInstruction('Punkt gesetzt — weiteren Punkt in Pano A wählen oder ↻ Neu berechnen.');
+    updateUI();
+    if (pairs.length >= 3) autoRecalculate();
+    else setInstruction(`Punkt ${pairs.length}/3 gesetzt — noch ${3 - pairs.length} Paar${3 - pairs.length > 1 ? 'e' : ''} für Transformation.`);
+  } else {
+    // Sync: B → A — lock A→B to prevent back-sync drift
+    const a = applyInv(ix, iy);
+    syncMarker.a = a;
+    syncMarker.b = { x: ix, y: iy };
+    redrawAll();
+    lockBtoA = true;
+    panToImage(viewerA, a.x, a.y);
+    setTimeout(() => { lockBtoA = false; }, 200);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// NAVIGATION
+// ═══════════════════════════════════════════════════════════════
+function panToImage(viewer, ix, iy) {
+  // immediate=true avoids animation drift
+  const vp = viewer.viewport.imageToViewportCoordinates(ix, iy);
+  viewer.viewport.panTo(vp, true);
+}
+
+function syncPanAtoB() {
+  const c = viewerA.viewport.getCenter();
+  const img = viewerA.viewport.viewportToImageCoordinates(c);
+  const b = applyFwd(img.x, img.y);
+  const vpB = viewerB.viewport.imageToViewportCoordinates(b.x, b.y);
+  viewerB.viewport.panTo(vpB);
+}
+function syncPanBtoA() {
+  const c = viewerB.viewport.getCenter();
+  const img = viewerB.viewport.viewportToImageCoordinates(c);
+  const a = applyInv(img.x, img.y);
+  const vpA = viewerA.viewport.imageToViewportCoordinates(a.x, a.y);
+  viewerA.viewport.panTo(vpA);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ZOOM SYNC
+// ═══════════════════════════════════════════════════════════════
+function syncZoomAtoB() {
+  if (syncLock) return;
+  syncLock = true;
+  try {
+    const imgZoom = viewerA.viewport.viewportToImageZoom(viewerA.viewport.getZoom());
+    const vpZoomB = viewerB.viewport.imageToViewportZoom(imgZoom);
+    viewerB.viewport.zoomTo(vpZoomB);
+  } finally { syncLock = false; }
+}
+function syncZoomBtoA() {
+  if (syncLock) return;
+  syncLock = true;
+  try {
+    const imgZoom = viewerB.viewport.viewportToImageZoom(viewerB.viewport.getZoom());
+    const vpZoomA = viewerA.viewport.imageToViewportZoom(imgZoom);
+    viewerA.viewport.zoomTo(vpZoomA);
+  } finally { syncLock = false; }
+}
+
+function toggleZoomSync() {
+  zoomSyncEnabled = !zoomSyncEnabled;
+  const btn = document.getElementById('zoom-sync-btn');
+  btn.textContent = `Zoom-Sync: ${zoomSyncEnabled ? 'AN' : 'AUS'}`;
+  btn.classList.toggle('active', zoomSyncEnabled);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// CALIBRATION
+// ═══════════════════════════════════════════════════════════════
+async function recalculate() {
+  if (pairs.length < 3) return;
+  const btn = document.getElementById('recalc-btn');
+  btn.textContent = '...';
+  btn.disabled = true;
+
+  const res = await fetch(`/api/calibrate/${SESSION_ID}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pairs: pairs.map(p => ({ ax: p.ax, ay: p.ay, bx: p.bx, by: p.by })) }),
+  });
+  const data = await res.json();
+  T = data.transform;
+  TPS = T.tps || null;
+
+  // Store per-pair residuals
+  if (T.residuals) {
+    T.residuals.forEach((err, i) => { if (pairs[i]) pairs[i].residual = err; });
+  }
+
+  const rmseEl = document.getElementById('rmse-display');
+  if (T.rmse != null) {
+    // Affine RMSE shows the degree of local distortion; TPS corrects it at runtime
+    const tpsTag = TPS ? ' · TPS aktiv' : '';
+    rmseEl.textContent = `Affine RMSE ${T.rmse.toFixed(1)} px${tpsTag}`;
+    rmseEl.className = T.rmse < 30 ? 'good' : 'bad';
+  } else {
+    rmseEl.textContent = '—';
+    rmseEl.className = '';
+  }
+
+  updateUI();
+  btn.textContent = '✓ Berechnet';
+  setTimeout(() => {
+    btn.textContent = '↻ Neu berechnen';
+    btn.disabled = pairs.length < 3;
+  }, 1500);
+  redrawAll();
+}
+function autoRecalculate() { if (pairs.length >= 3) recalculate(); }
+
+// ═══════════════════════════════════════════════════════════════
+// MODE TOGGLE
+// ═══════════════════════════════════════════════════════════════
+function toggleMode() {
+  mode = mode === 'calib' ? 'sync' : 'calib';
+  pendingA = null;
+  tempMarkerCoord = null;
+  syncMarker.a = null;
+  syncMarker.b = null;
+  redrawAll();
+  const btn = document.getElementById('mode-toggle');
+  const lbl = document.getElementById('mode-label');
+  if (mode === 'sync') {
+    btn.textContent = 'Kalibrierung';
+    btn.classList.add('sync-mode');
+    lbl.textContent = 'Sync-Modus';
+    setInstruction('Klick in A → springt zu entsprechender Position in B (und umgekehrt)');
+  } else {
+    btn.textContent = 'Sync-Modus';
+    btn.classList.remove('sync-mode');
+    lbl.textContent = 'Kalibrierung';
+    setInstruction('Punkt in Pano A klicken, dann denselben Punkt in Pano B');
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// UI — PAIR CHIPS
+// ═══════════════════════════════════════════════════════════════
+function updateUI() {
+  const list = document.getElementById('pairs-list');
+  list.innerHTML = '';
+  pairs.forEach((p, i) => {
+    const color = COLORS[i % COLORS.length];
+    const chip = document.createElement('div');
+    chip.className = 'pair-chip';
+    let residHtml = '';
+    if (p.residual != null) {
+      const rc = p.residual < 20 ? '#6bcb77' : p.residual < 50 ? '#ffd93d' : '#ff6b6b';
+      residHtml = `<span class="resid" style="color:${rc}">${p.residual.toFixed(0)}px</span>`;
+    }
+    chip.innerHTML =
+      `<span class="dot" style="background:${color}"></span>` +
+      `<span>${i+1}</span>` +
+      residHtml +
+      `<span class="del" data-id="${p.id}">✕</span>`;
+    chip.addEventListener('click', (e) => {
+      if (e.target.classList.contains('del')) {
+        deletePair(parseInt(e.target.dataset.id));
+      } else {
+        // Jump both viewers to this pair
+        panToImage(viewerA, p.ax, p.ay);
+        panToImage(viewerB, p.bx, p.by);
+      }
+    });
+    list.appendChild(chip);
+  });
+  document.getElementById('pairs-count').textContent = `Paare: ${pairs.length}`;
+  document.getElementById('recalc-btn').disabled = pairs.length < 3;
+  document.getElementById('clear-all-btn').style.display = pairs.length > 0 ? '' : 'none';
+  redrawAll();
+}
+
+function deletePair(id) {
+  pairs = pairs.filter(p => p.id !== id);
+  updateUI();
+  if (pairs.length >= 3) recalculate();
+  else {
+    document.getElementById('rmse-display').textContent = '—';
+    document.getElementById('rmse-display').className = '';
+  }
+}
+
+function clearAllPairs() {
+  if (pairs.length === 0) return;
+  if (!confirm(`Alle ${pairs.length} Punktpaare löschen?`)) return;
+  pairs = [];
+  pendingA = null;
+  tempMarkerCoord = null;
+  syncMarker.a = null;
+  syncMarker.b = null;
+  updateUI();
+  document.getElementById('rmse-display').textContent = '—';
+  document.getElementById('rmse-display').className = '';
+  setInstruction('Punkt in Pano A klicken, dann denselben Punkt in Pano B');
+  showToast('Alle Paare gelöscht');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// OVERLAY DRAWING — all markers stored in image coords, redrawn every frame
+// ═══════════════════════════════════════════════════════════════
+function redrawAll() {
+  ['a', 'b'].forEach(w => {
+    const svg = document.getElementById(`overlay-${w}`);
+    svg.innerHTML = '';
+    const viewer = w === 'a' ? viewerA : viewerB;
+    if (!viewer || !viewer.viewport) return;
+
+    // Calibration pair markers
+    pairs.forEach((p, i) => {
+      const color = COLORS[i % COLORS.length];
+      const ix = w === 'a' ? p.ax : p.bx;
+      const iy = w === 'a' ? p.ay : p.by;
+      drawCircleMarker(svg, viewer, ix, iy, color, String(i + 1));
+    });
+
+    // Pending temp marker (A click waiting for B)
+    if (w === 'a' && tempMarkerCoord) {
+      drawTempMarker(svg, viewer, tempMarkerCoord.x, tempMarkerCoord.y);
+    }
+
+    // Sync markers
+    if (syncMarker[w]) {
+      drawSyncMarker(svg, viewer, syncMarker[w].x, syncMarker[w].y);
+    }
+  });
+}
+
+function imgToScreen(viewer, ix, iy) {
+  const vp = viewer.viewport.imageToViewportCoordinates(ix, iy);
+  return viewer.viewport.viewportToViewerElementCoordinates(vp);
+}
+
+function drawCircleMarker(svg, viewer, ix, iy, color, label) {
+  const p = imgToScreen(viewer, ix, iy);
+  const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+  g.innerHTML =
+    `<circle cx="${p.x}" cy="${p.y}" r="9" fill="none" stroke="${color}" stroke-width="2.5"/>` +
+    `<line x1="${p.x-5}" y1="${p.y}" x2="${p.x+5}" y2="${p.y}" stroke="${color}" stroke-width="1.5"/>` +
+    `<line x1="${p.x}" y1="${p.y-5}" x2="${p.x}" y2="${p.y+5}" stroke="${color}" stroke-width="1.5"/>` +
+    `<text x="${p.x+12}" y="${p.y+4}" fill="${color}" font-size="12" font-weight="bold" ` +
+      `style="text-shadow:0 0 3px #000">${label}</text>`;
+  svg.appendChild(g);
+}
+
+function drawTempMarker(svg, viewer, ix, iy) {
+  const p = imgToScreen(viewer, ix, iy);
+  const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+  g.innerHTML =
+    `<circle cx="${p.x}" cy="${p.y}" r="9" fill="none" stroke="#ff8c00" stroke-width="2.5" stroke-dasharray="3 2"/>` +
+    `<text x="${p.x+12}" y="${p.y+4}" fill="#ff8c00" font-size="12">?</text>`;
+  svg.appendChild(g);
+}
+
+function drawSyncMarker(svg, viewer, ix, iy) {
+  const p = imgToScreen(viewer, ix, iy);
+  const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+  g.innerHTML =
+    `<circle cx="${p.x}" cy="${p.y}" r="14" fill="none" stroke="#ff2020" stroke-width="2.5" stroke-dasharray="5 2"/>` +
+    `<circle cx="${p.x}" cy="${p.y}" r="3.5" fill="#ff2020"/>` +
+    `<line x1="${p.x-8}" y1="${p.y}" x2="${p.x+8}" y2="${p.y}" stroke="#ff2020" stroke-width="1.5"/>` +
+    `<line x1="${p.x}" y1="${p.y-8}" x2="${p.x}" y2="${p.y+8}" stroke="#ff2020" stroke-width="1.5"/>`;
+  svg.appendChild(g);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ZOOM CONTROLS
+// ═══════════════════════════════════════════════════════════════
+function zoomViewer(which, dir) {
+  const v = which === 'a' ? viewerA : viewerB;
+  v.viewport.zoomBy(dir > 0 ? 2 : 0.5);
+  v.viewport.applyConstraints();
+}
+
+function resetViewer(which) {
+  const v = which === 'a' ? viewerA : viewerB;
+  v.viewport.goHome(true);
+}
+
+function updateZoomDisplay(which) {
+  const v = which === 'a' ? viewerA : viewerB;
+  const el = document.getElementById(`zoom-${which}`);
+  if (document.activeElement === el) return; // don't overwrite while user is typing
+  try {
+    const imgZoom = v.viewport.viewportToImageZoom(v.viewport.getZoom());
+    el.value = Math.round(imgZoom * 100) + '%';
+  } catch(e) {}
+}
+
+function setupZoomInput(which) {
+  const el = document.getElementById(`zoom-${which}`);
+  const v = () => which === 'a' ? viewerA : viewerB;
+
+  el.addEventListener('focus', () => {
+    el.select();
+  });
+
+  el.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      applyZoomInput(which);
+      el.blur();
+    }
+    if (e.key === 'Escape') {
+      el.blur();
+      updateZoomDisplay(which);
+    }
+  });
+
+  el.addEventListener('blur', () => {
+    applyZoomInput(which);
+  });
+}
+
+function applyZoomInput(which) {
+  const el = document.getElementById(`zoom-${which}`);
+  const v = which === 'a' ? viewerA : viewerB;
+  const raw = el.value.replace('%', '').trim();
+  const pct = parseFloat(raw);
+  if (isNaN(pct) || pct <= 0) {
+    updateZoomDisplay(which);
+    return;
+  }
+  const imgZoom = pct / 100;
+  const vpZoom = v.viewport.imageToViewportZoom(imgZoom);
+  v.viewport.zoomTo(vpZoom);
+  v.viewport.applyConstraints();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SAVE
+// ═══════════════════════════════════════════════════════════════
+async function saveSession() {
+  const btn = document.getElementById('save-btn');
+  btn.textContent = '...';
+  btn.disabled = true;
+  try {
+    // 1. Recalculate + persist in session JSON
+    await fetch(`/api/calibrate/${SESSION_ID}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pairs: pairs.map(p => ({ ax: p.ax, ay: p.ay, bx: p.bx, by: p.by })) }),
+    });
+    // 2. Persist keyed by filenames so re-upload restores it automatically
+    await fetch(`/api/calibration/persist/${SESSION_ID}`, { method: 'POST' });
+    showToast(`${pairs.length} Paare gespeichert — beim nächsten Upload wiederhergestellt`);
+  } catch(e) {
+    showToast('Speichern fehlgeschlagen', true);
+  }
+  btn.textContent = 'Gespeichert';
+  setTimeout(() => { btn.textContent = 'Speichern'; btn.disabled = false; }, 2000);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TOAST
+// ═══════════════════════════════════════════════════════════════
+let toastTimer = null;
+function showToast(msg, isError = false) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'show' + (isError ? ' error' : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.className = ''; }, 2500);
+}
+
+function setInstruction(text) {
+  document.getElementById('instr').textContent = text;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// CONTEXT MENU — right-click on pair markers
+// ═══════════════════════════════════════════════════════════════
+const ctxEl = document.getElementById('ctx-menu');
+let ctxPairId = null;
+
+function showContextMenu(clientX, clientY, pairId, pairNum, color) {
+  ctxPairId = pairId;
+  ctxEl.innerHTML =
+    `<div class="ctx-item" style="color:${color};pointer-events:none;font-size:0.75rem;opacity:0.7;padding-bottom:0.1rem;">` +
+      `Paar ${pairNum}</div>` +
+    `<div class="ctx-sep"></div>` +
+    `<div class="ctx-item" onclick="panToPair(${pairId})">` +
+      `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>` +
+      `Zu Paar springen</div>` +
+    `<div class="ctx-item danger" onclick="deletePair(${pairId}); hideContextMenu()">` +
+      `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>` +
+      `Paar löschen</div>`;
+  // Ensure menu stays within viewport
+  const menuW = 175, menuH = 110;
+  const x = Math.min(clientX, window.innerWidth - menuW - 8);
+  const y = Math.min(clientY, window.innerHeight - menuH - 8);
+  ctxEl.style.left = x + 'px';
+  ctxEl.style.top  = y + 'px';
+  ctxEl.classList.add('visible');
+}
+
+function hideContextMenu() {
+  ctxEl.classList.remove('visible');
+  ctxPairId = null;
+}
+
+function panToPair(id) {
+  const p = pairs.find(p => p.id === id);
+  if (p) { panToImage(viewerA, p.ax, p.ay); panToImage(viewerB, p.bx, p.by); }
+  hideContextMenu();
+}
+
+document.addEventListener('click', hideContextMenu);
+document.addEventListener('contextmenu', (e) => {
+  // Only hide if clicking outside a viewer
+  if (!e.target.closest('#viewer-a') && !e.target.closest('#viewer-b')) hideContextMenu();
+});
+
+// Find nearest visible pair marker within pixel threshold
+function findNearestPair(viewer, sx, sy, threshold) {
+  let best = null, bestDist = Infinity;
+  pairs.forEach((p, i) => {
+    const ix = viewer === viewerA ? p.ax : p.bx;
+    const iy = viewer === viewerA ? p.ay : p.by;
+    const sc = imgToScreen(viewer, ix, iy);
+    const dist = Math.hypot(sc.x - sx, sc.y - sy);
+    if (dist < threshold && dist < bestDist) { bestDist = dist; best = { p, i }; }
+  });
+  return best;
+}
+
+function addContextMenuHandlers() {
+  ['a', 'b'].forEach(w => {
+    const el = document.getElementById(`viewer-${w}`);
+    el.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      const viewer = w === 'a' ? viewerA : viewerB;
+      const rect = el.getBoundingClientRect();
+      const sx = e.clientX - rect.left;
+      const sy = e.clientY - rect.top;
+      const hit = findNearestPair(viewer, sx, sy, 18);
+      if (hit) {
+        showContextMenu(e.clientX, e.clientY, hit.p.id, hit.i + 1, COLORS[hit.i % COLORS.length]);
+      } else {
+        hideContextMenu();
+      }
+    });
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// BOOT
+// ═══════════════════════════════════════════════════════════════
+init();
+</script>
+</body>
+</html>

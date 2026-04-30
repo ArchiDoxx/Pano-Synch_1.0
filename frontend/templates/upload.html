@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <title>OnsiteAI — PanoSync</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0d1117;
+      color: #e0e0e0;
+      font-family: 'Segoe UI', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* ── Background grid pattern ──────────────────────────── */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(0,156,171,0.06) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,156,171,0.06) 1px, transparent 1px);
+      background-size: 48px 48px;
+      pointer-events: none;
+    }
+    /* Radial glow center */
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: radial-gradient(ellipse 70% 60% at 50% 50%, rgba(0,156,171,0.07) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    /* ── Brand header ──────────────────────────────────────── */
+    .brand {
+      position: fixed;
+      top: 1.1rem;
+      left: 1.8rem;
+      text-decoration: none;
+      opacity: 0.9;
+    }
+    .brand:hover { opacity: 1; }
+
+    /* ── Card ─────────────────────────────────────────────── */
+    .card {
+      position: relative;
+      z-index: 1;
+      background: rgba(18, 22, 32, 0.92);
+      border: 1px solid #1e2a38;
+      border-radius: 14px;
+      padding: 2.8rem 2.5rem 2.2rem;
+      width: 100%;
+      max-width: 860px;
+      backdrop-filter: blur(6px);
+    }
+
+    .card-header { margin-bottom: 2rem; }
+    .card-header h1 {
+      font-size: 1.65rem;
+      color: #fff;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      margin-bottom: 0.3rem;
+    }
+    .card-header h1 span { color: #009cab; }
+    .card-header p { color: #5a7080; font-size: 0.88rem; }
+
+    /* ── Upload grid ───────────────────────────────────────── */
+    .upload-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.2rem; margin-bottom: 1.8rem; }
+
+    .upload-box {
+      border: 1.5px dashed #253040;
+      border-radius: 10px;
+      padding: 1.8rem 1.4rem;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      background: rgba(255,255,255,0.02);
+    }
+    .upload-box:hover, .upload-box.dragover {
+      border-color: #009cab;
+      background: rgba(0,156,171,0.05);
+    }
+    .upload-box.has-file { border-color: #009cab; border-style: solid; background: rgba(0,156,171,0.04); }
+    .upload-box input { display: none; }
+
+    .upload-icon {
+      width: 42px; height: 42px;
+      margin: 0 auto 0.8rem;
+      border-radius: 10px;
+      background: #131c26;
+      border: 1px solid #1e2a38;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .upload-icon svg { width: 20px; height: 20px; stroke: #009cab; fill: none; stroke-width: 1.8; }
+
+    .upload-box.has-file .upload-icon { border-color: #009cab; background: rgba(0,156,171,0.1); }
+
+    .upload-label { font-size: 0.95rem; font-weight: 700; color: #ccc; margin-bottom: 0.2rem; display: block; }
+    .upload-hint  { font-size: 0.78rem; color: #445060; margin-top: 0.15rem; }
+    .file-info    { margin-top: 0.7rem; font-size: 0.82rem; color: #009cab; min-height: 1.1em; }
+
+    /* ── Button ────────────────────────────────────────────── */
+    .btn {
+      display: block;
+      width: 100%;
+      background: #009cab;
+      color: #fff;
+      font-size: 0.95rem;
+      font-weight: 700;
+      padding: 0.75rem 2rem;
+      border: none;
+      border-radius: 7px;
+      cursor: pointer;
+      letter-spacing: 0.5px;
+      transition: background 0.2s, opacity 0.2s;
+    }
+    .btn:hover:not(:disabled) { background: #00b3c4; }
+    .btn:disabled { background: #1e2a38; color: #3a4a58; cursor: not-allowed; }
+
+    /* ── Progress ──────────────────────────────────────────── */
+    #progress-section { display: none; margin-top: 1.2rem; }
+    .progress-bar-wrap { background: #131c26; border-radius: 6px; height: 6px; margin: 0.8rem 0 0.5rem; overflow: hidden; }
+    .progress-bar { height: 100%; background: #009cab; width: 0%; transition: width 0.4s; border-radius: 6px; }
+    .progress-text { font-size: 0.83rem; color: #5a7080; }
+
+    .error { color: #c61617; margin-top: 0.8rem; font-size: 0.85rem; }
+
+    /* ── Footer ────────────────────────────────────────────── */
+    .footer {
+      position: fixed;
+      bottom: 1rem;
+      font-size: 0.75rem;
+      color: #283848;
+      z-index: 1;
+    }
+    .footer span { color: #009cab; }
+
+    /* ── Help button ───────────────────────────────────── */
+    .help-btn {
+      position: fixed;
+      bottom: 1.4rem;
+      right: 1.6rem;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: #131c26;
+      border: 1px solid #1e2a38;
+      color: #3a5060;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10;
+      transition: border-color 0.2s, color 0.2s;
+    }
+    .help-btn:hover { border-color: #009cab; color: #009cab; }
+
+    /* ── Welcome modal ─────────────────────────────────── */
+    #welcome-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.7);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+    }
+    #welcome-overlay.show { display: flex; }
+    #welcome-modal {
+      background: #0f1820;
+      border: 1px solid #1e2a38;
+      border-radius: 14px;
+      padding: 2rem 2.2rem 1.8rem;
+      max-width: 520px;
+      width: 90%;
+      position: relative;
+    }
+    #welcome-modal h2 { font-size: 1.3rem; color: #fff; margin-bottom: 0.3rem; }
+    #welcome-modal h2 span { color: #009cab; }
+    #welcome-modal .subtitle { color: #5a7080; font-size: 0.85rem; margin-bottom: 1.4rem; }
+    #welcome-modal .steps { list-style: none; margin-bottom: 1.4rem; }
+    #welcome-modal .steps li {
+      display: flex;
+      gap: 0.7rem;
+      align-items: flex-start;
+      padding: 0.5rem 0;
+      border-bottom: 1px solid #131c26;
+      font-size: 0.88rem;
+      color: #8a9aaa;
+      line-height: 1.5;
+    }
+    #welcome-modal .steps li:last-child { border-bottom: none; }
+    #welcome-modal .steps .num {
+      background: #009cab22;
+      color: #009cab;
+      border-radius: 50%;
+      width: 22px;
+      height: 22px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+    #welcome-modal .modal-footer {
+      display: flex;
+      gap: 0.7rem;
+      align-items: center;
+      margin-top: 1.2rem;
+    }
+    #welcome-modal .btn-primary {
+      background: #009cab;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 0.5rem 1.2rem;
+      font-size: 0.88rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    #welcome-modal .btn-primary:hover { background: #00b3c4; }
+    #welcome-modal .btn-secondary {
+      background: #131c26;
+      color: #5a8090;
+      border: 1px solid #1e2a38;
+      border-radius: 6px;
+      padding: 0.5rem 1.2rem;
+      font-size: 0.88rem;
+      font-weight: 700;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-block;
+    }
+    #welcome-modal .btn-secondary:hover { border-color: #009cab; color: #009cab; }
+    .modal-close {
+      position: absolute;
+      top: 0.8rem;
+      right: 1rem;
+      background: none;
+      border: none;
+      color: #3a5060;
+      font-size: 1.2rem;
+      cursor: pointer;
+      line-height: 1;
+    }
+    .modal-close:hover { color: #fff; }
+  </style>
+</head>
+<body>
+
+  <!-- Brand mark top-left -->
+  <div class="brand">
+    <img src="/static/onsite-logo.jpg" alt="OnsiteAI" style="height:32px;width:auto;display:block;">
+  </div>
+
+  <!-- Hook headline above card -->
+  <div style="position:relative;z-index:1;text-align:center;margin-bottom:1.6rem;max-width:860px;width:100%;padding:0 2.5rem;">
+    <p style="font-size:0.78rem;letter-spacing:2px;text-transform:uppercase;color:#009cab;font-weight:600;margin-bottom:0.4rem;">Dein Analyse-Workspace</p>
+    <p style="font-size:1.05rem;color:#4a6070;font-weight:400;line-height:1.5;">Lade zwei Panoramen hoch — PanoSync findet die Partikel<br>auf beiden Scans für dich.</p>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <h1>Analysehelfer <span>PanoSync</span></h1>
+      <p>Zwei Mikroskopie-Panoramen synchronisiert vergleichen — Upload und automatische Tile-Generierung</p>
+    </div>
+
+    <div class="upload-grid">
+      <div class="upload-box" id="box-a" onclick="document.getElementById('file-a').click()">
+        <div class="upload-icon">
+          <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="12" r="4"/><line x1="12" y1="3" x2="12" y2="7"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+        </div>
+        <label class="upload-label">Panorama A</label>
+        <div class="upload-hint">Original · ungefärbt · grau</div>
+        <input type="file" id="file-a" accept=".png,.jpg,.tif,.tiff">
+        <div class="file-info" id="info-a"></div>
+      </div>
+      <div class="upload-box" id="box-b" onclick="document.getElementById('file-b').click()">
+        <div class="upload-icon">
+          <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="12" r="4"/><line x1="3" y1="12" x2="7" y2="12"/><line x1="17" y1="12" x2="21" y2="12"/></svg>
+        </div>
+        <label class="upload-label">Panorama B</label>
+        <div class="upload-hint">BWB-Kontrast · gefärbt · blau</div>
+        <input type="file" id="file-b" accept=".png,.jpg,.tif,.tiff">
+        <div class="file-info" id="info-b"></div>
+      </div>
+    </div>
+
+    <button class="btn" id="start-btn" disabled onclick="startUpload()">Verarbeitung starten</button>
+
+    <div id="progress-section">
+      <div class="progress-bar-wrap"><div class="progress-bar" id="progress-bar"></div></div>
+      <div class="progress-text" id="progress-text">Initialisiere...</div>
+    </div>
+    <div class="error" id="error-msg"></div>
+  </div>
+
+  <div class="footer">OnsiteAI &mdash; <span>PanoSync</span> &mdash; Interne Analyse-Unterstützung</div>
+
+  <!-- Help button (bottom right) -->
+  <button class="help-btn" onclick="openWelcome()" title="Hilfe & Anleitung">?</button>
+
+  <!-- Welcome / Help modal -->
+  <div id="welcome-overlay" onclick="if(event.target===this)closeWelcome()">
+    <div id="welcome-modal">
+      <button class="modal-close" onclick="closeWelcome()" title="Schließen">&times;</button>
+      <h2>Willkommen bei <span>PanoSync</span></h2>
+      <p class="subtitle">Synchronisierter Vergleich zweier Mikroskopie-Panoramen</p>
+      <ul class="steps">
+        <li>
+          <span class="num">1</span>
+          <span>Lade <strong style="color:#c0d0d8">Panorama A</strong> (Original, grau) und <strong style="color:#c0d0d8">Panorama B</strong> (BWB-Kontrast, blau) hoch.</span>
+        </li>
+        <li>
+          <span class="num">2</span>
+          <span>PanoSync generiert automatisch Tile-Pyramiden und berechnet eine erste Ausrichtung.</span>
+        </li>
+        <li>
+          <span class="num">3</span>
+          <span>Im Kalibrierungseditor: Klicke mindestens <strong style="color:#c0d0d8">3 Punktpaare</strong> — erst in Pano A, dann denselben Punkt in Pano B.</span>
+        </li>
+        <li>
+          <span class="num">4</span>
+          <span>Nach der Kalibrierung ermöglicht der <strong style="color:#c0d0d8">Sync-Modus</strong> synchrones Navigieren: Klick in A springt automatisch zur entsprechenden Position in B.</span>
+        </li>
+        <li>
+          <span class="num">5</span>
+          <span>Mit <strong style="color:#c0d0d8">Speichern</strong> wird die Kalibrierung für dasselbe Bildpaar dauerhaft gesichert.</span>
+        </li>
+      </ul>
+      <div class="modal-footer">
+        <button class="btn-primary" onclick="closeWelcome()">Los geht's</button>
+        <a class="btn-secondary" href="/hilfe" target="_blank">Vollständige Anleitung &rarr;</a>
+      </div>
+    </div>
+  </div>
+
+<script>
+  // ── Welcome modal ──────────────────────────────────────────────
+  function openWelcome() { document.getElementById('welcome-overlay').classList.add('show'); }
+  function closeWelcome() {
+    document.getElementById('welcome-overlay').classList.remove('show');
+    localStorage.setItem('panosync_welcomed', '1');
+  }
+  if (!localStorage.getItem('panosync_welcomed')) openWelcome();
+
+  const fileA = document.getElementById('file-a');
+  const fileB = document.getElementById('file-b');
+  const btn   = document.getElementById('start-btn');
+
+  function fmt(bytes) { return (bytes / 1024 / 1024).toFixed(1) + ' MB'; }
+
+  function onFile(input, boxId, infoId) {
+    input.addEventListener('change', () => {
+      if (input.files[0]) {
+        const f = input.files[0];
+        document.getElementById(infoId).textContent = f.name + ' (' + fmt(f.size) + ')';
+        document.getElementById(boxId).classList.add('has-file');
+        checkReady();
+      }
+    });
+  }
+
+  onFile(fileA, 'box-a', 'info-a');
+  onFile(fileB, 'box-b', 'info-b');
+
+  function checkReady() { btn.disabled = !(fileA.files[0] && fileB.files[0]); }
+
+  const STEP_LABELS = {
+    uploaded:            'Dateien empfangen...',
+    tiling_a:            'Tile-Pyramide Panorama A wird generiert...',
+    tiling_b:            'Tile-Pyramide Panorama B wird generiert...',
+    computing_transform: 'Initiale Kalibrierung wird berechnet...',
+    ready:               'Fertig — Weiterleitung...',
+    error:               'Fehler aufgetreten.',
+  };
+
+  async function startUpload() {
+    btn.disabled = true;
+    document.getElementById('error-msg').textContent = '';
+    document.getElementById('progress-section').style.display = 'block';
+
+    const fd = new FormData();
+    fd.append('pano_a', fileA.files[0]);
+    fd.append('pano_b', fileB.files[0]);
+
+    let sessionId;
+    try {
+      const r = await fetch('/api/upload', { method: 'POST', body: fd });
+      if (!r.ok) throw new Error(await r.text());
+      sessionId = (await r.json()).session_id;
+    } catch (e) {
+      document.getElementById('error-msg').textContent = 'Upload fehlgeschlagen: ' + e.message;
+      btn.disabled = false;
+      return;
+    }
+
+    const poll = setInterval(async () => {
+      try {
+        const s = await (await fetch('/api/status/' + sessionId)).json();
+        document.getElementById('progress-bar').style.width = s.progress + '%';
+        document.getElementById('progress-text').textContent = STEP_LABELS[s.step] || s.step;
+        if (s.step === 'ready') {
+          clearInterval(poll);
+          window.location.href = '/calibrate/' + sessionId;
+        } else if (s.step === 'error') {
+          clearInterval(poll);
+          document.getElementById('error-msg').textContent = 'Fehler: ' + s.error;
+          btn.disabled = false;
+        }
+      } catch (e) { /* ignore poll error */ }
+    }, 800);
+  }
+</script>
+</body>
+</html>
