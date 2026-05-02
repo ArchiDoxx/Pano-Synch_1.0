@@ -1,6 +1,22 @@
 # OnsiteAI — PanoSync
 
-**PanoSync** ist ein internes Analyse-Werkzeug von OnsiteAI zum synchronisierten Vergleich zweier Mikroskopie-Panoramen. Es erkennt automatisch Partikel auf beiden Scans und erlaubt präzise Navigation zwischen Original- und Kontrastaufnahme.
+## Introduction & Use Case (Partikelanalyse)
+
+**PanoSync** ist ein lokal (ohne Cloud) laufendes, browserbasiertes Tool für Mikrobiolog:innen, um **Partikel in Mikroskopie-Aufnahmen effizient zu vergleichen und zu analysieren**.
+
+Der typische Use Case: Zu derselben Probe existieren zwei Panorama-Scans:
+- **Panorama A:** Original/ungefärbt (grau)
+- **Panorama B:** BWB‑Kontrast/gefärbt (blau)
+
+Für die Partikelanalyse müssen auffällige Strukturen/Partikel zwischen beiden Scans **zuverlässig wiedergefunden** werden. Da die Panoramen aus vielen Streifen „gestitcht“ sind, entstehen **lokale Versätze**, die man durch simples paralleles Scrollen oder eine reine globale Verschiebung oft nicht sauber ausgleichen kann.
+
+### Was PanoSync dafür liefert (Kernfunktion)
+- **Synchronisierte Navigation:** Klick in Panorama A springt automatisch zur korrespondierenden Position in Panorama B (und umgekehrt).
+- **Kalibrierung über Referenzpunkt-Paare:** Nutzer setzen passende Partikel/Marker als Punktpaare. Daraus berechnet PanoSync eine **affine Transformation (Matrix)** und (optional) eine **TPS-Interpolation**, um die Positionen zwischen den Bildern zuzuordnen.
+- **Wiederverwendbarkeit:** Kalibrierungen können gespeichert und bei denselben Scans/Dateinamen wieder geladen werden.
+- **Einfacher Start:** per Doppelklick (Windows/macOS), Nutzung im Browser.
+
+**PanoSync** ist ein internes Analyse-Werkzeug von OnsiteAI zum synchronisierten Vergleich zweier Mikroskopie-Panoramen. Es berechnet aus manuell gesetzten Referenzpunkt-Paaren eine Transformation (affin, optional TPS) und erlaubt präzise Navigation zwischen beiden Scans.
 
 ## Inhaltsverzeichnis
 - [Voraussetzungen](#voraussetzungen)
@@ -44,13 +60,13 @@ Das Programm installiert beim ersten Start automatisch alle notwendigen Komponen
 ## ⚠️ Wichtiger Hinweis zur Bildzuweisung
 
 **PanoSync ist fest darauf ausgelegt, dass „Panorama B“ immer das Blau-Weiß-Blau (BWB) Bild sein muss.**
-Da das System speziell für den Abgleich dieser Aufnahmen konzipiert wurde, ist es für die korrekte Verarbeitung und Synchronisierung zwingend erforderlich, dass die gefärbten BWB-Bilder konsequent in den Upload-Slot für Panorama B geladen werden. Bitte achten Sie darauf, diese Reihenfolge (*Pano A = unbefärbtes Original, Pano B = BWB-Kontrastbild*) in jedem Durchlauf exakt einzuhalten!
+Da das System speziell für den Abgleich dieser Aufnahmen konzipiert wurde, ist es für die korrekte Verarbeitung und Synchronisierung zwingend erforderlich, dass die gefärbten BWB-Bilder konsequ[...]  
 
 ---
 
 ## Wichtig während der Nutzung
 
-Das schwarze Terminal-Fenster muss **geöffnet bleiben**, solange PanoSync läuft — es ist der Server im Hintergrund. es ist das eigentliche Programm, das Browserfenster ist nur die sichbare Benutzeroberfläche (GUI)
+Das schwarze Terminal-Fenster muss **geöffnet bleiben**, solange PanoSync läuft — es ist der Server im Hintergrund. es ist das eigentliche Programm, das Browserfenster ist nur die sichbare Ben[...]  
 Zum Beenden einfach das Terminal-Fenster schließen (GUI schließt NICHT automatisch, verliert aber seine funktion).
 
 ---
@@ -91,28 +107,21 @@ Um beide Panoramen zu synchronisieren, müssen mindestens **3 Referenzpunkt-Paar
 
 ## Häufig gestellte Fragen (FAQ)
 
-**Wie werden Sessions und Bilder gespeichert?**
-Über den Button *"Speichern"* in der oberen Leiste werden die gesetzten Punktpaare dauerhaft gesichert und mit den Dateinamen der hochgeladenen Bilder verknüpft. 
+**Wie werden Sessions und Bilder gespeichert?** Über den Button *"Speichern"* in der oberen Leiste werden die gesetzten Punktpaare dauerhaft gesichert und mit den Dateinamen der hochgeladenen Bilder verknüpft.  
 
-**Wie kann ich gespeicherte Bilder und Kalibrierungen wieder nutzen?**
-Wenn Sie exakt dieselben Bilddateien (mit exakt demselben Dateinamen) auf der Startseite erneut hochladen, erkennt PanoSync diese und stellt alle zuvor gespeicherten Kalibrierungspunkte automatisch wieder her.
+**Wie kann ich gespeicherte Bilder und Kalibrierungen wieder nutzen?** Wenn Sie exakt dieselben Bilddateien (mit exakt demselben Dateinamen) auf der Startseite erneut hochladen, erkennt PanoSync diese und stellt alle zuvor gespeicherten Kalibrierungspunkte automatisc[...]  
 
-**Was bedeuten die Werte (z.B. 12px) unten in den Punktpaar-Chips?**
-Das sind die *Residuums-Werte* (Abweichung in Pixeln). Ein kleiner Wert (grün) bedeutet, dass dieses Punktpaar sehr gut in die berechnete Synchronisation passt. Ein großer Wert (orange/rot) bedeutet, dass diese Punkte mathematisch abweichen (z.B. weil ein Punkt ungenau geklickt wurde). Klickt man auf das "✕" im Chip, kann man fehlerhafte Punkte löschen.
+**Was bedeuten die Werte (z.B. 12px) unten in den Punktpaar-Chips?** Das sind die *Residuums-Werte* (Abweichung in Pixeln). Ein kleiner Wert (grün) bedeutet, dass dieses Punktpaar sehr gut in die berechnete Synchronisation passt. Ein großer Wert (orange/rot) bed[...]  
 
-**Was ist "TPS" in der oberen Leiste und was macht es?**
-TPS steht für *Thin Plate Spline*. Das ist eine fortgeschrittene Methode, die das Bild nicht nur starr übereinanderlegt, sondern es wie eine elastische Folie lokal minimal "verbiegt". So werden lokale Linsenverzerrungen oder Stitching-Fehler ausgeglichen.
+**Was ist "TPS" in der oberen Leiste und was macht es?** TPS steht für *Thin Plate Spline*. Das ist eine fortgeschrittene Methode, die das Bild nicht nur starr übereinanderlegt, sondern es wie eine elastische Folie lokal minimal "verbiegt". So werden[...]  
 
-**Sollte ich lieber mehr oder weniger Punkte für die Kalibrierung setzen?**
-**Definitiv mehr!** TPS braucht mindestens 3 Punkte, um zu starten. Erst mit mehreren Punkten (z.B. 5-15 Stück) entfaltet TPS seine volle Stärke, da es die Bilder tief im Inneren lokal perfekt anpassen kann.
+**Sollte ich lieber mehr oder weniger Punkte für die Kalibrierung setzen?** **Definitiv mehr!** TPS braucht mindestens 3 Punkte, um zu starten. Erst mit mehreren Punkten (z.B. 5-15 Stück) entfaltet TPS seine volle Stärke, da es die Bilder tief im Inneren lokal perfekt [...]  
 
-**Tipp für höchste Präzision:**
-Um die besten Präzisionsergebnisse zu erzielen, müssen die Punkte über das gesamte Bild verteilt werden – **sowohl auf der X- als auch auf der Y-Achse**. Wenn Sie die Punkte als ein zweidimensionales Netz im gesamten zu analysierenden Bereich verteilen, kann PanoSync lokale Verzerrungen überall optimal ausgleichen. Setzen Sie die Punkte niemals nur auf einer flachen, horizontalen oder vertikalen Linie!
+**Tipp für höchste Präzision:** Um die besten Präzisionsergebnisse zu erzielen, müssen die Punkte über das gesamte Bild verteilt werden – **sowohl auf der X- als auch auf der Y-Achse**. Wenn Sie die Punkte als ein zweidime[...]  
 
-**Was bedeutet der "RMSE"-Wert oben in der Leiste?**
-Dies ist der mittlere Fehler über alle Punkte (Root Mean Square Error). Ein niedrigerer Wert zeigt an, dass die Synchronisation insgesamt sehr nah an den gesetzten Punkten passgenau ist. 
-*Wchtig:* **Mehr Punkte bei einem insgesamt etwas höheren RMSE-Wert sind fast immer besser, als sehr wenig Punkte mit einem niedrigen RMSE-Wert.**
-Da das Bild riesig ist, bedeutet eine Kalibrierung mit nur wenigen Punkten: Sie ist zwar genau an diesen drei Klicks perfekt, aber weit abseits dieser Punkte sinkt die Präzision drastisch. Ein etwas höherer Fehlerwert bei deutlich mehr (und räumlich tiefer in die X/Y-Richtungen verteilten) Punkten bedeutet, dass die lokale Präzision im gesamten Bild absolut konstant und zuverlässig ist. **Merke: Mehr synchrone Punkte > als extrem niedrige Fehlerwerte.**
+**Was bedeutet der "RMSE"-Wert oben in der Leiste?** Dies ist der mittlere Fehler über alle Punkte (Root Mean Square Error). Ein niedrigerer Wert zeigt an, dass die Synchronisation insgesamt sehr nah an den gesetzten Punkten passgenau ist.  
+*Wchtig:* **Mehr Punkte bei einem insgesamt etwas höheren RMSE-Wert sind fast immer besser, als sehr wenig Punkte mit einem niedrigen RMSE-Wert.**  
+Da das Bild riesig ist, bedeutet eine Kalibrierung mit nur wenigen Punkten: Sie ist zwar genau an diesen drei Klicks perfekt, aber weit abseits dieser Punkte sinkt die Präzision drastisch. Ein e[...]  
 
 ---
 
