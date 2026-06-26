@@ -6,6 +6,7 @@ import asyncio
 import hashlib
 import json
 import shutil
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import List
 
@@ -15,26 +16,48 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
+from . import storage
 from .session import new_session_id, save_session, load_session, update_session
 from .registration import compute_transform, initial_transform
 from .pyramid import generate_dzi
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-UPLOADS_DIR = BASE_DIR / "data" / "uploads"
-TILES_DIR = BASE_DIR / "data" / "tiles"
-CALIBRATIONS_DIR = BASE_DIR / "data" / "calibrations"
 TEMPLATES_DIR = BASE_DIR / "frontend" / "templates"
 STATIC_DIR = BASE_DIR / "frontend" / "static"
+
+# Retention for the startup cleanup of stale sessions/tiles/uploads (hours).
+CLEANUP_MAX_AGE_HOURS = 24
+
+# Create the cloud-sync-safe data dirs before anything mounts or serves them.
+storage.ensure_dirs()
 
 
 def _calibration_key(name_a: str, name_b: str) -> str:
     """Stable key derived from the two original filenames."""
     return hashlib.md5(f"{name_a}|||{name_b}".encode()).hexdigest()[:16]
 
-app = FastAPI(title="PanoSync")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # The server starts fresh on every launch → ideal point to reclaim disk and
+    # keep the data dir bounded (guards against the historic tile flood).
+    storage.ensure_dirs()
+    report = storage.cleanup_stale(max_age_hours=CLEANUP_MAX_AGE_HOURS)
+    print(f"[PanoSync] data dir: {storage.data_root()} | startup cleanup removed {report}")
+    synced = storage.is_cloud_synced(BASE_DIR)
+    if synced:
+        print(
+            f"[PanoSync] WARNUNG: Der Programmordner liegt in einem Cloud-Sync-Ordner "
+            f"('{synced}'). Die erzeugten Daten sind sicher (sie liegen unter "
+            f"{storage.data_root()} und werden NICHT gesynct) — lege das Programm "
+            f"selbst aber besser AUSSERHALB von OneDrive/iCloud/Dropbox ab."
+        )
+    yield
+
+
+app = FastAPI(title="PanoSync", lifespan=lifespan)
 
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
-app.mount("/tiles", StaticFiles(directory=str(TILES_DIR)), name="tiles")
+app.mount("/tiles", StaticFiles(directory=str(storage.tiles_dir())), name="tiles")
 
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
@@ -81,7 +104,7 @@ async def upload_images(
     pano_b: UploadFile = File(...),
 ):
     session_id = new_session_id()
-    session_dir = UPLOADS_DIR / session_id
+    session_dir = storage.uploads_dir() / session_id
     session_dir.mkdir(parents=True, exist_ok=True)
 
     path_a = session_dir / "panoA.png"
@@ -96,8 +119,9 @@ async def upload_images(
     name_a = pano_a.filename or "panoA"
     name_b = pano_b.filename or "panoB"
     calib_key = _calibration_key(name_a, name_b)
-    CALIBRATIONS_DIR.mkdir(parents=True, exist_ok=True)
-    calib_file = CALIBRATIONS_DIR / f"{calib_key}.json"
+    calib_dir = storage.calibrations_dir()
+    calib_dir.mkdir(parents=True, exist_ok=True)
+    calib_file = calib_dir / f"{calib_key}.json"
 
     restored_pairs = []
     restored_transform = None
@@ -135,8 +159,8 @@ async def upload_images(
 async def _process_session(session_id: str, path_a: str, path_b: str):
     """Generate DZI pyramids and compute initial transform."""
     try:
-        tiles_a_dir = TILES_DIR / session_id / "panoA"
-        tiles_b_dir = TILES_DIR / session_id / "panoB"
+        tiles_a_dir = storage.tiles_dir() / session_id / "panoA"
+        tiles_b_dir = storage.tiles_dir() / session_id / "panoB"
         tiles_a_dir.mkdir(parents=True, exist_ok=True)
         tiles_b_dir.mkdir(parents=True, exist_ok=True)
 
@@ -238,8 +262,9 @@ async def persist_calibration(session_id: str):
         raise HTTPException(status_code=400, detail="No calibration key — session predates this feature")
     pairs = session.get("pairs", [])
     transform = session.get("transform")
-    CALIBRATIONS_DIR.mkdir(parents=True, exist_ok=True)
-    calib_file = CALIBRATIONS_DIR / f"{calib_key}.json"
+    calib_dir = storage.calibrations_dir()
+    calib_dir.mkdir(parents=True, exist_ok=True)
+    calib_file = calib_dir / f"{calib_key}.json"
     calib_file.write_text(json.dumps({
         "orig_name_a": session.get("orig_name_a", ""),
         "orig_name_b": session.get("orig_name_b", ""),

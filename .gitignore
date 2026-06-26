@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+
+# PanoSync runtime data — now stored in the per-user local app dir,
+# but ignore any stray local copy created in the program folder.
+/data/
+
+# OS cruft
+.DS_Store
+Thumbs.db

@@ -1,0 +1,4 @@
+# Development-only dependencies (NOT installed by the end-user launchers).
+# Install with:  python -m pip install -r requirements-dev.txt
+-r requirements.txt
+pytest>=8.0

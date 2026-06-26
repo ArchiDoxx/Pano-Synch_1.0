@@ -8,9 +8,7 @@ import uuid
 from pathlib import Path
 from typing import Optional
 
-BASE_DIR = Path(__file__).parent.parent
-SESSIONS_DIR = BASE_DIR / "data" / "sessions"
-SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
+from . import storage
 
 
 def new_session_id() -> str:
@@ -20,12 +18,13 @@ def new_session_id() -> str:
 
 def get_session_path(session_id: str) -> Path:
     """Get the file path for a session."""
-    return SESSIONS_DIR / f"{session_id}.json"
+    return storage.sessions_dir() / f"{session_id}.json"
 
 
 def save_session(session_id: str, data: dict) -> None:
     """Save session data to disk."""
     path = get_session_path(session_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, 'w', encoding='utf-8') as f:
         json.dump(data, f, indent=2)
 
