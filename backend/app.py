@@ -20,6 +20,7 @@ from . import storage
 from .session import new_session_id, save_session, load_session, update_session
 from .registration import compute_transform, initial_transform
 from .pyramid import generate_dzi
+from .version import __version__
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 TEMPLATES_DIR = BASE_DIR / "frontend" / "templates"
@@ -63,6 +64,7 @@ async def lifespan(app: FastAPI):
             f"{storage.data_root()} und werden NICHT gesynct) — lege das Programm "
             f"selbst aber besser AUSSERHALB von OneDrive/iCloud/Dropbox ab."
         )
+    print(f"[PanoSync] Version {__version__}")
     yield
 
 
@@ -284,3 +286,10 @@ async def persist_calibration(session_id: str):
         "transform": transform,
     }, indent=2))
     return {"ok": True, "pairs_saved": len(pairs)}
+
+
+def inject_version(request: Request):
+    return {"version": __version__}
+
+
+templates.context_processors.append(inject_version)
