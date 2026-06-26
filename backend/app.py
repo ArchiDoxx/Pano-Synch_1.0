@@ -20,7 +20,11 @@ from . import storage
 from .session import new_session_id, save_session, load_session, update_session
 from .registration import compute_transform, initial_transform
 from .pyramid import generate_dzi
-from .version import __version__
+
+try:
+    from .version import __version__
+except Exception:
+    __version__ = "unknown"
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 TEMPLATES_DIR = BASE_DIR / "frontend" / "templates"
