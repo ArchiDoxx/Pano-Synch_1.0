@@ -133,3 +133,133 @@ def test_detects_icloud_mobile_documents():
 def test_local_paths_not_flagged():
     assert storage.is_cloud_synced(r"C:\Users\x\AppData\Local\PanoSync") is None
     assert storage.is_cloud_synced("/Users/x/Desktop/PanoSync") is None
+
+
+# ── Legacy data migration (one-time cleanup of the old in-program data dir) ────
+#
+# Old builds wrote data/ into the program folder. For users who ran PanoSync
+# from inside OneDrive, that data/ is the source of the "tile flood" still in
+# the cloud. On first start of the new build we rescue the (persistent)
+# calibrations and delete the legacy data/ *at the source*, so the user's own
+# sync client propagates the deletion upward.
+
+def test_migrate_rescues_calibrations_and_removes_legacy(data_dir, tmp_path):
+    program_dir = tmp_path / "prog"
+    legacy = program_dir / "data"
+    (legacy / "tiles" / "sess" / "panoA").mkdir(parents=True)
+    (legacy / "sessions").mkdir(parents=True)
+    (legacy / "calibrations").mkdir(parents=True)
+    (legacy / "calibrations" / "deadbeef.json").write_text('{"pairs": [1]}')
+
+    report = storage.migrate_legacy_data(program_dir)
+
+    assert not legacy.exists()
+    rescued = storage.calibrations_dir() / "deadbeef.json"
+    assert rescued.exists()
+    assert rescued.read_text() == '{"pairs": [1]}'
+    assert report["removed"] is True
+    assert report["calibrations_migrated"] == 1
+
+
+def test_migrate_noop_when_no_legacy(data_dir, tmp_path):
+    program_dir = tmp_path / "prog"
+    program_dir.mkdir()
+    report = storage.migrate_legacy_data(program_dir)
+    assert report["removed"] is False
+    assert report["calibrations_migrated"] == 0
+
+
+def test_migrate_skips_unrelated_data_dir(data_dir, tmp_path):
+    # A 'data' folder that doesn't look like PanoSync's must never be deleted.
+    program_dir = tmp_path / "prog"
+    legacy = program_dir / "data"
+    legacy.mkdir(parents=True)
+    (legacy / "random.txt").write_text("not panosync")
+    report = storage.migrate_legacy_data(program_dir)
+    assert report["removed"] is False
+    assert legacy.exists()
+
+
+def test_migrate_does_not_overwrite_existing_calibration(data_dir, tmp_path):
+    storage.ensure_dirs()
+    existing = storage.calibrations_dir() / "key.json"
+    existing.write_text("NEW")
+    program_dir = tmp_path / "prog"
+    legacy = program_dir / "data"
+    (legacy / "calibrations").mkdir(parents=True)
+    (legacy / "calibrations" / "key.json").write_text("OLD")
+
+    report = storage.migrate_legacy_data(program_dir)
+
+    assert existing.read_text() == "NEW"  # never clobber a newer calibration
+    assert not legacy.exists()
+    assert report["removed"] is True
+    assert report["calibrations_migrated"] == 0
+
+
+def test_migrate_skips_when_legacy_equals_data_root(monkeypatch, tmp_path):
+    # Self-protection: if the active data dir IS the legacy path, never delete it.
+    program_dir = tmp_path / "prog"
+    legacy = program_dir / "data"
+    (legacy / "tiles").mkdir(parents=True)
+    monkeypatch.setenv("PANOSYNC_DATA_DIR", str(legacy))
+    report = storage.migrate_legacy_data(program_dir)
+    assert report["removed"] is False
+    assert legacy.exists()
+
+
+# ── Multi-copy scan & purge (the cleanup tool for several downloaded copies) ───
+#
+# A user may have downloaded PanoSync several times (Desktop, Downloads,
+# "PanoSync (1)", ...). Each copy has its own data/ — so the one-time
+# migration on start only clears the copy it was launched from. The sweep tool
+# finds *every* installation under a search root and purges each data/.
+
+def _make_install(root: Path, name: str, with_data: bool = True) -> Path:
+    inst = root / name
+    (inst / "backend").mkdir(parents=True)
+    (inst / "backend" / "app.py").write_text("# app")
+    if with_data:
+        (inst / "data" / "tiles" / "s").mkdir(parents=True)
+        (inst / "data" / "calibrations").mkdir(parents=True)
+    return inst
+
+
+def test_find_install_data_dirs_finds_all_copies(data_dir, tmp_path):
+    onedrive = tmp_path / "OneDrive"
+    _make_install(onedrive / "Desktop", "PanoSync", with_data=True)
+    _make_install(onedrive / "Downloads", "PanoSync (1)", with_data=True)
+    # An unrelated folder that merely has a 'data' dir but no backend/app.py.
+    (onedrive / "other" / "data").mkdir(parents=True)
+
+    found = {p.resolve() for p in storage.find_install_data_dirs(onedrive)}
+
+    assert (onedrive / "Desktop" / "PanoSync" / "data").resolve() in found
+    assert (onedrive / "Downloads" / "PanoSync (1)" / "data").resolve() in found
+    assert (onedrive / "other" / "data").resolve() not in found
+    assert len(found) == 2
+
+
+def test_find_skips_install_without_data(data_dir, tmp_path):
+    onedrive = tmp_path / "OneDrive"
+    _make_install(onedrive, "PanoSync", with_data=False)
+    assert storage.find_install_data_dirs(onedrive) == []
+
+
+def test_find_excludes_active_data_root(monkeypatch, tmp_path):
+    onedrive = tmp_path / "OneDrive"
+    inst = _make_install(onedrive, "PanoSync", with_data=True)
+    monkeypatch.setenv("PANOSYNC_DATA_DIR", str(inst / "data"))  # active == this data
+    assert storage.find_install_data_dirs(onedrive) == []
+
+
+def test_purge_data_dir_rescues_and_removes(data_dir, tmp_path):
+    inst = _make_install(tmp_path, "PanoSync", with_data=True)
+    (inst / "data" / "calibrations" / "k.json").write_text('{"pairs":[]}')
+
+    report = storage.purge_data_dir(inst / "data")
+
+    assert not (inst / "data").exists()
+    assert (storage.calibrations_dir() / "k.json").exists()
+    assert report["removed"] is True
+    assert report["calibrations_migrated"] == 1

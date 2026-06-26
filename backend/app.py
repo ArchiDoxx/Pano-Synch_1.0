@@ -41,6 +41,18 @@ async def lifespan(app: FastAPI):
     # The server starts fresh on every launch → ideal point to reclaim disk and
     # keep the data dir bounded (guards against the historic tile flood).
     storage.ensure_dirs()
+
+    # One-time: remove the old in-program data/ folder (the lingering cloud
+    # "tile flood" source). Calibrations are rescued first; the deletion happens
+    # at the source so the user's own sync client propagates it to the cloud.
+    migration = storage.migrate_legacy_data(BASE_DIR)
+    if migration["removed"]:
+        print(
+            f"[PanoSync] Migration: alter Daten-Ordner im Programmverzeichnis entfernt "
+            f"({migration['calibrations_migrated']} Kalibrierung(en) gesichert). "
+            f"Lag der Ordner in einem Cloud-Sync-Ordner, wird das Löschen jetzt nach oben synchronisiert."
+        )
+
     report = storage.cleanup_stale(max_age_hours=CLEANUP_MAX_AGE_HOURS)
     print(f"[PanoSync] data dir: {storage.data_root()} | startup cleanup removed {report}")
     synced = storage.is_cloud_synced(BASE_DIR)
